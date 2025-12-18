@@ -272,6 +272,206 @@
   color: rgba(17, 24, 39, 0.55);
 }
 
+/* Start screen settings */
+.settingsGrid {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  margin-bottom: 18px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(17, 24, 39, 0.10);
+  background: rgba(249, 250, 251, 0.65);
+}
+
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 800;
+  color: rgba(17, 24, 39, 0.85);
+}
+
+.fieldHint {
+  font-size: 12px;
+  color: rgba(17, 24, 39, 0.62);
+  line-height: 1.35;
+}
+
+.select {
+  width: 100%;
+  appearance: none;
+  border: 1px solid rgba(17, 24, 39, 0.14);
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 12px 12px;
+  font-size: 15px;
+  color: rgba(17, 24, 39, 0.92);
+  outline: none;
+}
+
+.select:focus-visible {
+  box-shadow: var(--ring);
+  border-color: rgba(59, 130, 246, 0.55);
+}
+
+.metaPill {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(17, 24, 39, 0.78);
+  background: rgba(59, 130, 246, 0.10);
+  border: 1px solid rgba(59, 130, 246, 0.16);
+}
+
+/* Start screen toggles */
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(17, 24, 39, 0.10);
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.toggleText {
+  font-size: 14px;
+  font-weight: 800;
+  color: rgba(17, 24, 39, 0.86);
+}
+
+.togglePill {
+  display: inline-flex;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(100, 116, 139, 0.18);
+  background: rgba(100, 116, 139, 0.10);
+  color: rgba(17, 24, 39, 0.70);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.toggle {
+  width: 42px;
+  height: 22px;
+  accent-color: var(--primary);
+}
+
+/* Ribbon + badges during quiz */
+.ribbonRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.ribbonItem {
+  font-size: 12px;
+  color: rgba(17, 24, 39, 0.70);
+}
+
+.badgeRibbon {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.miniBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(17, 24, 39, 0.90);
+  background: rgba(59, 130, 246, 0.10);
+  border: 1px solid rgba(59, 130, 246, 0.18);
+}
+
+/* Badge list on summary */
+.badgeGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.emptyBadges {
+  font-size: 12px;
+  color: rgba(17, 24, 39, 0.62);
+}
+
+/* Timer ring + question top row */
+.questionTopRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.timerWrap {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  min-width: 120px;
+}
+
+.timerText {
+  font-size: 12px;
+  color: rgba(17, 24, 39, 0.65);
+}
+
+.timerRing {
+  width: 54px;
+  height: 54px;
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.ringSvg {
+  width: 54px;
+  height: 54px;
+  transform: rotate(-90deg);
+}
+
+.ringTrack {
+  fill: none;
+  stroke: rgba(100, 116, 139, 0.18);
+  stroke-width: 6;
+}
+
+.ringProgress {
+  fill: none;
+  stroke: url(#ringGradient);
+  stroke: var(--primary);
+  stroke-width: 6;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 250ms linear;
+}
+
+.ringCenterText {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 900;
+  color: rgba(17, 24, 39, 0.88);
+}
+
 /* Responsive tweaks */
 @media (max-width: 480px) {
   .card {
@@ -281,6 +481,15 @@
 
   .question {
     font-size: 20px;
+  }
+
+  .questionTopRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .timerWrap {
+    justify-items: start;
   }
 
   .cardFooter {
