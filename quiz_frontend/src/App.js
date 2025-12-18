@@ -225,8 +225,36 @@ function App() {
     return (correct / recentCorrectness.length) * 100;
   }, [recentCorrectness]);
 
+  // Deterministic RNG support for tests:
+  // - In normal runtime, uses Math.random()
+  // - In tests, if window.__TEST_RANDOM_SEED__ is set, uses a seeded LCG for deterministic order
+  function makeRng() {
+    const maybeSeed = typeof window !== 'undefined' && typeof window.__TEST_RANDOM_SEED__ === 'number'
+      ? window.__TEST_RANDOM_SEED__
+      : null;
+
+    if (maybeSeed == null) {
+      // Use native random
+      return () => Math.random();
+    }
+
+    // Simple LCG: X_{n+1} = (aX_n + c) mod m
+    // Parameters from Numerical Recipes: a=1664525, c=1013904223, m=2^32
+    let state = maybeSeed >>> 0;
+    return () => {
+      state = (1664525 * state + 1013904223) >>> 0;
+      // Scale to [0,1)
+      return state / 0x100000000;
+    };
+  }
+
+  const rngRef = useRef(null);
+  if (rngRef.current == null) {
+    rngRef.current = makeRng();
+  }
   function randomInt(maxExclusive) {
-    return Math.floor(Math.random() * maxExclusive);
+    const r = rngRef.current ? rngRef.current() : Math.random();
+    return Math.floor(r * maxExclusive);
   }
 
   function shuffleArray(arr) {
@@ -307,14 +335,19 @@ function App() {
     if (adaptiveEnabled) {
       const initialRank = difficultyToRank(initialDifficulty);
 
-      // Sort by "distance" from initial difficulty, with random tie-breaking if shuffle is on.
+      // Sort by "distance" from initial difficulty, with deterministic tie-breaking when shuffle is on.
       ordered.sort((a, b) => {
         const da = Math.abs(difficultyToRank(a.difficulty) - initialRank);
         const db = Math.abs(difficultyToRank(b.difficulty) - initialRank);
         if (da !== db) return da - db;
 
-        // If shuffle is enabled, randomize ties. If not, keep stable deterministic by id.
-        if (shuffleEnabled) return Math.random() - 0.5;
+        if (shuffleEnabled) {
+          // Use seeded pseudo-random tie-breaker
+          // Derive stable pseudo-random by comparing randomInt across call
+          const ra = randomInt(1 << 30);
+          const rb = randomInt(1 << 30);
+          return ra - rb;
+        }
         return String(a.id).localeCompare(String(b.id));
       });
     } else if (shuffleEnabled) {
