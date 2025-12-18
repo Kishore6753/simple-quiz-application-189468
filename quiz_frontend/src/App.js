@@ -4,28 +4,35 @@ import './App.css';
 /**
  * Local quiz data (no backend). Each question has a stable id and one correct option index.
  * Keep this simple and offline-friendly per requirements.
+ *
+ * We also add a `difficulty` tag per question to support optional "adaptive mode".
+ * Difficulty is used only for *selection ordering*; scoring remains based on the selected run difficulty multiplier.
  */
 const QUESTIONS = [
   {
     id: 'q1',
+    difficulty: 'Easy',
     question: 'Which HTML element is used to include JavaScript code?',
     options: ['<javascript>', '<js>', '<script>', '<code>'],
     correctIndex: 2,
   },
   {
     id: 'q2',
+    difficulty: 'Easy',
     question: 'In React, which hook is primarily used to manage local component state?',
     options: ['useState', 'useFetch', 'useStore', 'useData'],
     correctIndex: 0,
   },
   {
     id: 'q3',
+    difficulty: 'Medium',
     question: 'Which CSS property controls the size of text?',
     options: ['font-style', 'text-size', 'font-size', 'letter-spacing'],
     correctIndex: 2,
   },
   {
     id: 'q4',
+    difficulty: 'Medium',
     question: 'What does JSON stand for?',
     options: [
       'Java Source Object Notation',
@@ -37,6 +44,7 @@ const QUESTIONS = [
   },
   {
     id: 'q5',
+    difficulty: 'Hard',
     question: 'Which of the following best describes a REST API?',
     options: [
       'A database query language',
@@ -61,15 +69,20 @@ const DIFFICULTY_PRESETS = {
 
 const TIME_OPTIONS_SECONDS = [15, 20, 25, 30];
 
+const DIFFICULTY_ORDER = ['Easy', 'Medium', 'Hard'];
+const ADAPTIVE_WINDOW_N = 5;
+
 /**
- * Create a stable subset of questions for the selected difficulty.
- * We keep order stable (first N questions) for determinism + tests.
+ * Achievements:
+ * - 5-in-a-row: reach a 5 correct streak at any point
+ * - 10-in-a-row: reach a 10 correct streak at any point
+ * - Perfect Score: all answers correct (evaluated at end)
  */
-function getQuestionsForDifficulty(allQuestions, difficulty) {
-  const preset = DIFFICULTY_PRESETS[difficulty] ?? DIFFICULTY_PRESETS.Easy;
-  const n = Math.min(preset.questionCount, allQuestions.length);
-  return allQuestions.slice(0, n);
-}
+const BADGES = [
+  { id: 'streak-5', label: '5-in-a-row' },
+  { id: 'streak-10', label: '10-in-a-row' },
+  { id: 'perfect', label: 'Perfect Score' },
+];
 
 // PUBLIC_INTERFACE
 function App() {
@@ -85,6 +98,8 @@ function App() {
   const [settings, setSettings] = useState({
     difficulty: 'Easy',
     timePerQuestionSec: 20,
+    shuffleEnabled: true,
+    adaptiveEnabled: false,
   });
 
   /** Questions used for the current run. This is fixed once the quiz starts. */
@@ -100,6 +115,20 @@ function App() {
   const [answersById, setAnswersById] = useState({});
 
   /**
+   * Map of { [questionId]: { options: string[], correctIndex: number } }
+   * Used to support shuffling options while preserving correctness.
+   */
+  const [optionsByQuestionId, setOptionsByQuestionId] = useState({});
+
+  /** Streaks and achievements for this run. */
+  const [currentStreak, setCurrentStreak] = useState(0);
+  const [bestStreak, setBestStreak] = useState(0);
+  const [earnedBadgeIds, setEarnedBadgeIds] = useState([]);
+
+  /** Recent correctness history for adaptive mode. */
+  const [recentCorrectness, setRecentCorrectness] = useState([]);
+
+  /**
    * Per-question countdown state.
    * We reset this when the question changes.
    */
@@ -108,10 +137,43 @@ function App() {
   // Keep the latest "has user answered" information available to the timer tick callback.
   const hasAnsweredRef = useRef(false);
 
+  // Keep the latest values needed by the timer callback without re-registering interval.
+  const phaseRef = useRef(phase);
+  const currentIndexRef = useRef(currentIndex);
+  const runQuestionsRef = useRef(runQuestions);
+  const answersByIdRef = useRef(answersById);
+  const optionsByQuestionIdRef = useRef(optionsByQuestionId);
+  const timePerQuestionRef = useRef(settings.timePerQuestionSec);
+  const currentStreakRef = useRef(currentStreak);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+  useEffect(() => {
+    runQuestionsRef.current = runQuestions;
+  }, [runQuestions]);
+  useEffect(() => {
+    answersByIdRef.current = answersById;
+  }, [answersById]);
+  useEffect(() => {
+    optionsByQuestionIdRef.current = optionsByQuestionId;
+  }, [optionsByQuestionId]);
+  useEffect(() => {
+    timePerQuestionRef.current = settings.timePerQuestionSec;
+  }, [settings.timePerQuestionSec]);
+  useEffect(() => {
+    currentStreakRef.current = currentStreak;
+  }, [currentStreak]);
+
   const totalQuestions = runQuestions.length;
   const currentQuestion = runQuestions[currentIndex];
 
-  const selectedIndexForCurrent = answersById[currentQuestion?.id];
+  const currentOptionsEntry = currentQuestion ? optionsByQuestionId[currentQuestion.id] : null;
+
+  const selectedIndexForCurrent = currentQuestion ? answersById[currentQuestion.id] : undefined;
   const hasSelectedForCurrent = typeof selectedIndexForCurrent === 'number';
 
   useEffect(() => {
@@ -125,10 +187,11 @@ function App() {
   const rawCorrectCount = useMemo(() => {
     return runQuestions.reduce((acc, q) => {
       const selected = answersById[q.id];
-      if (typeof selected === 'number' && selected === q.correctIndex) return acc + 1;
+      const correctIndex = optionsByQuestionId[q.id]?.correctIndex ?? q.correctIndex;
+      if (typeof selected === 'number' && selected === correctIndex) return acc + 1;
       return acc;
     }, 0);
-  }, [answersById, runQuestions]);
+  }, [answersById, runQuestions, optionsByQuestionId]);
 
   const finalScore = useMemo(() => {
     // Keep score reasonably presentable; can be fractional if multiplier is 1.5
@@ -152,6 +215,151 @@ function App() {
     return Math.max(0, Math.min(1, timeRemainingSec / total));
   }, [timeRemainingSec, settings.timePerQuestionSec]);
 
+  const earnedBadgesForRibbon = useMemo(() => {
+    return BADGES.filter((b) => earnedBadgeIds.includes(b.id));
+  }, [earnedBadgeIds]);
+
+  const recentAccuracyPercent = useMemo(() => {
+    if (!recentCorrectness.length) return null;
+    const correct = recentCorrectness.reduce((acc, v) => acc + (v ? 1 : 0), 0);
+    return (correct / recentCorrectness.length) * 100;
+  }, [recentCorrectness]);
+
+  function randomInt(maxExclusive) {
+    return Math.floor(Math.random() * maxExclusive);
+  }
+
+  function shuffleArray(arr) {
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > 0; i -= 1) {
+      const j = randomInt(i + 1);
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  }
+
+  function clampDifficulty(difficulty) {
+    if (DIFFICULTY_ORDER.includes(difficulty)) return difficulty;
+    return 'Easy';
+  }
+
+  function difficultyToRank(difficulty) {
+    return DIFFICULTY_ORDER.indexOf(clampDifficulty(difficulty));
+  }
+
+  function rankToDifficulty(rank) {
+    const clamped = Math.max(0, Math.min(DIFFICULTY_ORDER.length - 1, rank));
+    return DIFFICULTY_ORDER[clamped];
+  }
+
+  function nextAdaptiveDifficultyFromRecent(recent) {
+    // Heuristic:
+    // - if accuracy >= 80%, try harder (rank +1)
+    // - if accuracy <= 40%, try easier (rank -1)
+    // - otherwise hold
+    const window = recent.slice(-ADAPTIVE_WINDOW_N);
+    if (!window.length) return null;
+    const correctCount = window.reduce((acc, v) => acc + (v ? 1 : 0), 0);
+    const accPct = (correctCount / window.length) * 100;
+
+    if (accPct >= 80) return { direction: 'harder', accPct };
+    if (accPct <= 40) return { direction: 'easier', accPct };
+    return { direction: 'hold', accPct };
+  }
+
+  function makeOptionShuffleMap(questionsForRun, enabled) {
+    const map = {};
+    questionsForRun.forEach((q) => {
+      if (!enabled) {
+        map[q.id] = { options: q.options, correctIndex: q.correctIndex };
+        return;
+      }
+
+      const indexed = q.options.map((opt, idx) => ({ opt, idx }));
+      const shuffled = shuffleArray(indexed);
+      const newOptions = shuffled.map((x) => x.opt);
+      const newCorrectIndex = shuffled.findIndex((x) => x.idx === q.correctIndex);
+
+      map[q.id] = {
+        options: newOptions,
+        correctIndex: newCorrectIndex,
+      };
+    });
+    return map;
+  }
+
+  function getQuestionsForInitialDifficulty(allQuestions, difficulty) {
+    const preset = DIFFICULTY_PRESETS[difficulty] ?? DIFFICULTY_PRESETS.Easy;
+    const n = Math.min(preset.questionCount, allQuestions.length);
+
+    // Selection pool: for adaptive mode, we prefer ordering by question difficulty around initial.
+    // We still take only N questions for the run (run length equals "difficulty preset questionCount").
+    return { n };
+  }
+
+  function computeRunQuestionOrder({ allQuestions, initialDifficulty, shuffleEnabled, adaptiveEnabled }) {
+    const { n } = getQuestionsForInitialDifficulty(allQuestions, initialDifficulty);
+
+    // Base pool: all questions. With small local list, adaptive is mostly illustrative but functional.
+    // We always return a fixed-length run.
+    let ordered = [...allQuestions];
+
+    if (adaptiveEnabled) {
+      const initialRank = difficultyToRank(initialDifficulty);
+
+      // Sort by "distance" from initial difficulty, with random tie-breaking if shuffle is on.
+      ordered.sort((a, b) => {
+        const da = Math.abs(difficultyToRank(a.difficulty) - initialRank);
+        const db = Math.abs(difficultyToRank(b.difficulty) - initialRank);
+        if (da !== db) return da - db;
+
+        // If shuffle is enabled, randomize ties. If not, keep stable deterministic by id.
+        if (shuffleEnabled) return Math.random() - 0.5;
+        return String(a.id).localeCompare(String(b.id));
+      });
+    } else if (shuffleEnabled) {
+      ordered = shuffleArray(ordered);
+    }
+
+    // Ensure stable subset size.
+    return ordered.slice(0, n);
+  }
+
+  function awardBadgeIfNeeded(badgeId) {
+    setEarnedBadgeIds((prev) => {
+      if (prev.includes(badgeId)) return prev;
+      return [...prev, badgeId];
+    });
+  }
+
+  function updateStreaksAndBadges(isCorrect) {
+    setCurrentStreak((prev) => {
+      const next = isCorrect ? prev + 1 : 0;
+
+      // Update best streak
+      setBestStreak((bestPrev) => Math.max(bestPrev, next));
+
+      // Award streak badges at thresholds.
+      if (next >= 5) awardBadgeIfNeeded('streak-5');
+      if (next >= 10) awardBadgeIfNeeded('streak-10');
+
+      return next;
+    });
+  }
+
+  function updateRecentCorrectness(isCorrect) {
+    setRecentCorrectness((prev) => {
+      const next = [...prev, isCorrect].slice(-ADAPTIVE_WINDOW_N);
+      return next;
+    });
+  }
+
+  function getEffectiveDifficultyLabel() {
+    if (!settings.adaptiveEnabled) return settings.difficulty;
+    // When adaptive is enabled, difficulty selection is the initial difficulty only.
+    return `${settings.difficulty} (initial)`;
+  }
+
   // PUBLIC_INTERFACE
   const selectOption = (questionId, optionIndex) => {
     setAnswersById((prev) => ({
@@ -165,23 +373,90 @@ function App() {
   };
 
   const endQuiz = () => {
+    // Perfect score badge is computed at end (includes timeouts/unanswered).
+    const rq = runQuestionsRef.current;
+    const ans = answersByIdRef.current;
+    const optMap = optionsByQuestionIdRef.current;
+
+    const correctCount = rq.reduce((acc, q) => {
+      const selected = ans[q.id];
+      const correctIndex = optMap[q.id]?.correctIndex ?? q.correctIndex;
+      if (typeof selected === 'number' && selected === correctIndex) return acc + 1;
+      return acc;
+    }, 0);
+
+    if (rq.length > 0 && correctCount === rq.length) {
+      awardBadgeIfNeeded('perfect');
+    }
+
     setPhase('summary');
   };
 
+  function evaluateAnswerForQuestion(question, selectedIndex) {
+    const correctIndex = optionsByQuestionIdRef.current[question.id]?.correctIndex ?? question.correctIndex;
+    return typeof selectedIndex === 'number' && selectedIndex === correctIndex;
+  }
+
+  function computeNextIndexAdaptive(currentIdx, recent) {
+    const rq = runQuestionsRef.current;
+    const currentQ = rq[currentIdx];
+    if (!currentQ) return currentIdx + 1;
+
+    const suggestion = nextAdaptiveDifficultyFromRecent(recent);
+    if (!suggestion || suggestion.direction === 'hold') return currentIdx + 1;
+
+    const currentRank = difficultyToRank(currentQ.difficulty);
+    const desiredRank =
+      suggestion.direction === 'harder' ? currentRank + 1 : suggestion.direction === 'easier' ? currentRank - 1 : currentRank;
+    const desiredDifficulty = rankToDifficulty(desiredRank);
+
+    const unanswered = rq
+      .map((q, idx) => ({ q, idx }))
+      .filter(({ q, idx }) => idx > currentIdx && answersByIdRef.current[q.id] === undefined);
+
+    // First try to find a question exactly matching desired difficulty.
+    const exact = unanswered.find(({ q }) => clampDifficulty(q.difficulty) === desiredDifficulty);
+    if (exact) return exact.idx;
+
+    // If none, keep normal sequential progression.
+    return currentIdx + 1;
+  }
+
   // PUBLIC_INTERFACE
   const goNext = ({ allowWithoutAnswer } = { allowWithoutAnswer: false }) => {
-    // Guard: in manual "Next", require answer. In timeout auto-advance, allow without answer.
-    if (!allowWithoutAnswer && !hasSelectedForCurrent) return;
+    const rq = runQuestionsRef.current;
+    const idx = currentIndexRef.current;
+    const q = rq[idx];
 
-    if (isLastQuestion) {
+    if (!q) return;
+
+    const selected = answersByIdRef.current[q.id];
+
+    // Guard: in manual "Next", require answer. In timeout auto-advance, allow without answer.
+    if (!allowWithoutAnswer && typeof selected !== 'number') return;
+
+    // Compute correctness (unanswered => incorrect).
+    const isCorrect = evaluateAnswerForQuestion(q, selected);
+    updateStreaksAndBadges(isCorrect);
+    updateRecentCorrectness(isCorrect);
+
+    const isLast = rq.length > 0 && idx === rq.length - 1;
+    if (isLast) {
       endQuiz();
+      return;
+    }
+
+    if (settings.adaptiveEnabled) {
+      const nextRecent = [...recentCorrectness, isCorrect].slice(-ADAPTIVE_WINDOW_N);
+      const nextIdx = computeNextIndexAdaptive(idx, nextRecent);
+      setCurrentIndex(nextIdx);
       return;
     }
 
     setCurrentIndex((i) => i + 1);
   };
 
-  // When question changes during quiz, reset timer.
+  // When question changes during quiz, reset timer and "answered" state.
   useEffect(() => {
     if (phase !== 'quiz') return;
     resetTimerForQuestion(settings.timePerQuestionSec);
@@ -220,11 +495,25 @@ function App() {
 
   // PUBLIC_INTERFACE
   const startQuiz = () => {
-    const questionsForRun = getQuestionsForDifficulty(QUESTIONS, settings.difficulty);
+    const questionsForRun = computeRunQuestionOrder({
+      allQuestions: QUESTIONS,
+      initialDifficulty: settings.difficulty,
+      shuffleEnabled: settings.shuffleEnabled,
+      adaptiveEnabled: settings.adaptiveEnabled,
+    });
+
     setRunQuestions(questionsForRun);
+    setOptionsByQuestionId(makeOptionShuffleMap(questionsForRun, settings.shuffleEnabled));
     setAnswersById({});
     setCurrentIndex(0);
     setPhase('quiz');
+
+    // reset run stats
+    setCurrentStreak(0);
+    setBestStreak(0);
+    setEarnedBadgeIds([]);
+    setRecentCorrectness([]);
+
     resetTimerForQuestion(settings.timePerQuestionSec);
   };
 
@@ -232,25 +521,38 @@ function App() {
   const restart = () => {
     setPhase('start');
     setRunQuestions([]);
+    setOptionsByQuestionId({});
     setAnswersById({});
     setCurrentIndex(0);
+
+    setCurrentStreak(0);
+    setBestStreak(0);
+    setEarnedBadgeIds([]);
+    setRecentCorrectness([]);
+
     resetTimerForQuestion(settings.timePerQuestionSec);
   };
 
   const renderStartScreen = () => {
+    const difficultyLabel = settings.adaptiveEnabled ? 'Initial difficulty' : 'Difficulty';
+    const difficultyHint = settings.adaptiveEnabled
+      ? 'Adaptive Mode will adjust which questions appear next based on your recent accuracy.'
+      : 'Questions and score multiplier scale with difficulty.';
+
     return (
       <>
         <header className="cardHeader">
           <span className="badge">Quick Quiz</span>
           <h1 className="resultTitle">Start a new run</h1>
-          <p className="resultSubtitle">Pick your difficulty and time per question.</p>
+          <p className="resultSubtitle">Pick your settings before you begin.</p>
         </header>
 
         <div className="settingsGrid" aria-label="Quiz settings">
           <label className="field">
-            <span className="fieldLabel">Difficulty</span>
+            <span className="fieldLabel">{difficultyLabel}</span>
             <select
               className="select"
+              aria-label={difficultyLabel}
               value={settings.difficulty}
               onChange={(e) =>
                 setSettings((prev) => ({
@@ -266,7 +568,9 @@ function App() {
               ))}
             </select>
             <span className="fieldHint">
-              {`Questions: ${Math.min(DIFFICULTY_PRESETS[settings.difficulty].questionCount, QUESTIONS.length)} • Multiplier: ${DIFFICULTY_PRESETS[settings.difficulty].multiplier}x`}
+              {`Run length: ${Math.min(DIFFICULTY_PRESETS[settings.difficulty].questionCount, QUESTIONS.length)} • Multiplier: ${
+                DIFFICULTY_PRESETS[settings.difficulty].multiplier
+              }x • ${difficultyHint}`}
             </span>
           </label>
 
@@ -274,6 +578,7 @@ function App() {
             <span className="fieldLabel">Time per question</span>
             <select
               className="select"
+              aria-label="Time per question"
               value={settings.timePerQuestionSec}
               onChange={(e) =>
                 setSettings((prev) => ({
@@ -290,6 +595,51 @@ function App() {
             </select>
             <span className="fieldHint">Timer auto-advances if you don’t answer in time.</span>
           </label>
+
+          <div className="field" role="group" aria-label="Modes">
+            <span className="fieldLabel">Modes</span>
+
+            <label className="toggleRow">
+              <span className="toggleText">
+                Shuffle <span className="togglePill">default ON</span>
+              </span>
+              <input
+                className="toggle"
+                type="checkbox"
+                checked={settings.shuffleEnabled}
+                onChange={(e) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    shuffleEnabled: e.target.checked,
+                  }))
+                }
+                aria-label="Shuffle"
+              />
+            </label>
+
+            <label className="toggleRow">
+              <span className="toggleText">
+                Adaptive Mode <span className="togglePill">default OFF</span>
+              </span>
+              <input
+                className="toggle"
+                type="checkbox"
+                checked={settings.adaptiveEnabled}
+                onChange={(e) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    adaptiveEnabled: e.target.checked,
+                  }))
+                }
+                aria-label="Adaptive Mode"
+              />
+            </label>
+
+            <span className="fieldHint">
+              Shuffle randomizes question order and answer choices. Adaptive Mode adjusts difficulty based on your last{' '}
+              {ADAPTIVE_WINDOW_N} answers.
+            </span>
+          </div>
         </div>
 
         <footer className="cardFooter">
@@ -310,6 +660,7 @@ function App() {
     if (!currentQuestion) return null;
 
     const total = settings.timePerQuestionSec;
+    const optionsToRender = currentOptionsEntry?.options ?? currentQuestion.options;
 
     return (
       <>
@@ -318,12 +669,34 @@ function App() {
             <span className="progressLabel">
               Question <strong>{currentIndex + 1}</strong> of <strong>{totalQuestions}</strong>
               <span className="metaPill" aria-label="Selected difficulty">
-                {settings.difficulty}
+                {getEffectiveDifficultyLabel()}
               </span>
             </span>
             <div className="progressTrack" aria-hidden="true">
               <div className="progressFill" style={{ width: `${progressPercent}%` }} />
             </div>
+
+            <div className="ribbonRow" aria-label="Run stats">
+              <span className="ribbonItem">
+                Streak: <strong>{currentStreak}</strong> (best <strong>{bestStreak}</strong>)
+              </span>
+              {settings.adaptiveEnabled ? (
+                <span className="ribbonItem" aria-label="Recent accuracy">
+                  Accuracy (last {ADAPTIVE_WINDOW_N}):{' '}
+                  <strong>{recentAccuracyPercent === null ? '—' : `${Math.round(recentAccuracyPercent)}%`}</strong>
+                </span>
+              ) : null}
+            </div>
+
+            {earnedBadgesForRibbon.length ? (
+              <div className="badgeRibbon" aria-label="Earned badges">
+                {earnedBadgesForRibbon.map((b) => (
+                  <span key={b.id} className="miniBadge">
+                    {b.label}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="questionTopRow">
@@ -356,11 +729,11 @@ function App() {
         </header>
 
         <div className="options" role="radiogroup" aria-labelledby={`question-${currentQuestion.id}`}>
-          {currentQuestion.options.map((opt, idx) => {
+          {optionsToRender.map((opt, idx) => {
             const isSelected = selectedIndexForCurrent === idx;
             return (
               <button
-                key={opt}
+                key={`${currentQuestion.id}-${opt}`}
                 type="button"
                 className={`optionBtn ${isSelected ? 'selected' : ''}`}
                 onClick={() => selectOption(currentQuestion.id, idx)}
@@ -395,6 +768,8 @@ function App() {
   };
 
   const renderSummaryScreen = () => {
+    const maxScore = totalQuestions * difficultyPreset.multiplier;
+
     return (
       <>
         <header className="cardHeader">
@@ -402,13 +777,12 @@ function App() {
           <h1 className="resultTitle">Your score</h1>
           <p className="resultScore">
             <strong>
-              {scoreDisplay} / {totalQuestions * difficultyPreset.multiplier}
+              {scoreDisplay} / {maxScore}
             </strong>
           </p>
           <p className="resultSubtitle">
-            Difficulty: <strong>{settings.difficulty}</strong> • Multiplier:{' '}
-            <strong>{difficultyPreset.multiplier}x</strong> • Time per question:{' '}
-            <strong>{settings.timePerQuestionSec}s</strong>
+            Difficulty: <strong>{getEffectiveDifficultyLabel()}</strong> • Multiplier: <strong>{difficultyPreset.multiplier}x</strong> •
+            Time per question: <strong>{settings.timePerQuestionSec}s</strong>
           </p>
         </header>
 
@@ -421,6 +795,38 @@ function App() {
             <span className="summaryLabel">Incorrect</span>
             <span className="summaryValue error">{totalQuestions - rawCorrectCount}</span>
           </div>
+          <div className="summaryRow">
+            <span className="summaryLabel">Best streak</span>
+            <span className="summaryValue">{bestStreak}</span>
+          </div>
+          <div className="summaryRow">
+            <span className="summaryLabel">Badges earned</span>
+            <span className="summaryValue">{earnedBadgeIds.length ? earnedBadgeIds.length : '0'}</span>
+          </div>
+
+          {earnedBadgeIds.length ? (
+            <div className="badgeGrid" aria-label="Badges earned list">
+              {BADGES.filter((b) => earnedBadgeIds.includes(b.id)).map((b) => (
+                <span key={b.id} className="miniBadge">
+                  {b.label}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="badgeGrid" aria-label="Badges earned list">
+              <span className="emptyBadges">No badges this run — try a longer streak!</span>
+            </div>
+          )}
+
+          <div className="summaryRow">
+            <span className="summaryLabel">Shuffle</span>
+            <span className="summaryValue">{settings.shuffleEnabled ? 'On' : 'Off'}</span>
+          </div>
+          <div className="summaryRow">
+            <span className="summaryLabel">Adaptive Mode</span>
+            <span className="summaryValue">{settings.adaptiveEnabled ? 'On' : 'Off'}</span>
+          </div>
+
           <div className="summaryRow">
             <span className="summaryLabel">Score (after multiplier)</span>
             <span className="summaryValue">{scoreDisplay}</span>
