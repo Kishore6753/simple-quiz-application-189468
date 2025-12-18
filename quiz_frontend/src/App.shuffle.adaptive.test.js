@@ -29,16 +29,10 @@ test('shuffle produces deterministic option order with seeded RNG', async () => 
 
   // Expect a stable, specific order for the seeded run
   // We don't know the exact shuffled order upfront, but we can assert it remains consistent
-  // by restarting with the same seed and comparing.
-  await user.click(screen.getByRole('button', { name: /Next|Finish/i })); // proceed arbitrarily
-
-  // Restart the app to compare
-  // The app has a visible "Offline-ready" footer we can use to ensure rerender doesn't crash
-  // We'll re-render a fresh instance with the same seed.
-  delete window.__TEST_RANDOM_SEED__;
-  window.__TEST_RANDOM_SEED__ = 12345;
+  // by rendering a fresh instance with the same seed and comparing.
+  // Render a second instance of <App /> without user interaction beyond starting.
   render(<App />);
-  await user.click(screen.getByRole('button', { name: /Start Quiz/i }));
+  await user.click(screen.getAllByRole('button', { name: /Start Quiz/i })[1]);
   const radios2 = await screen.findAllByRole('radio');
   const optionLabels2 = radios2.map((r) => r.textContent);
 
