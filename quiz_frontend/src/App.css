@@ -13,7 +13,17 @@
   --shadow: 0 16px 40px rgba(17, 24, 39, 0.10);
 
   --radius: 18px;
-  --ring: 0 0 0 4px rgba(59, 130, 246, 0.18);
+  --ring: 0 0 0 4px rgba(59, 130, 246, 0.28);
+  --ring-strong: 0 0 0 4px rgba(6, 182, 212, 0.28);
+
+  /* Badge palette */
+  --badge-earned-bg: rgba(59, 130, 246, 0.10);
+  --badge-earned-border: rgba(59, 130, 246, 0.18);
+  --badge-earned-text: rgba(17, 24, 39, 0.92);
+
+  --badge-neutral-bg: rgba(100, 116, 139, 0.10);
+  --badge-neutral-border: rgba(100, 116, 139, 0.18);
+  --badge-neutral-text: rgba(17, 24, 39, 0.70);
 }
 
 * {
@@ -113,6 +123,7 @@
 .optionBtn:focus-visible {
   box-shadow: var(--ring);
   border-color: rgba(59, 130, 246, 0.55);
+  outline: none;
 }
 
 .optionBtn.selected {
@@ -198,15 +209,25 @@
 .badge {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   width: fit-content;
   padding: 6px 10px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 700;
-  color: rgba(17, 24, 39, 0.9);
-  background: rgba(6, 182, 212, 0.14);
-  border: 1px solid rgba(6, 182, 212, 0.22);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--badge-earned-text);
+  background: var(--badge-earned-bg);
+  border: 1px solid var(--badge-earned-border);
   margin-bottom: 10px;
+  line-height: 1;
+}
+.badgeDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--success);
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.18);
 }
 
 .resultTitle {
@@ -337,10 +358,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid rgba(17, 24, 39, 0.10);
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .toggleText {
@@ -361,10 +382,67 @@
   font-weight: 900;
 }
 
+/* Accessible switch styling on top of native checkbox */
 .toggle {
-  width: 42px;
-  height: 22px;
-  accent-color: var(--primary);
+  appearance: none;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  position: relative;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: #ffffff;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  outline: none;
+}
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  box-shadow: 0 2px 6px rgba(17, 24, 39, 0.12);
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+.toggle:checked {
+  background: linear-gradient(90deg, var(--primary), rgba(59, 130, 246, 0.85));
+  border-color: rgba(59, 130, 246, 0.55);
+}
+.toggle:checked::after {
+  transform: translateX(20px);
+  border-color: rgba(59, 130, 246, 0.35);
+}
+.toggle:hover {
+  border-color: rgba(59, 130, 246, 0.40);
+}
+.toggle:focus-visible {
+  box-shadow: var(--ring);
+  border-color: rgba(59, 130, 246, 0.55);
+}
+.toggleLabel {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.toggleStateChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  border: 1px solid var(--badge-neutral-border);
+  color: var(--badge-neutral-text);
+  background: var(--badge-neutral-bg);
+}
+.toggle:checked + .toggleStateChip {
+  border-color: var(--badge-earned-border);
+  color: var(--badge-earned-text);
+  background: var(--badge-earned-bg);
 }
 
 /* Ribbon + badges during quiz */
@@ -385,19 +463,36 @@
   margin-top: 10px;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 8px 10px;
 }
 
 .miniBadge {
+  display: inline-inline;
+}
+.miniBadge {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   padding: 6px 10px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 800;
-  color: rgba(17, 24, 39, 0.90);
-  background: rgba(59, 130, 246, 0.10);
-  border: 1px solid rgba(59, 130, 246, 0.18);
+  line-height: 1;
+  color: var(--badge-earned-text);
+  background: var(--badge-earned-bg);
+  border: 1px solid var(--badge-earned-border);
+}
+.miniBadge .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+.miniBadge.neutral {
+  color: var(--badge-neutral-text);
+  background: var(--badge-neutral-bg);
+  border-color: var(--badge-neutral-border);
 }
 
 /* Badge list on summary */
@@ -426,6 +521,11 @@
   justify-items: end;
   gap: 6px;
   min-width: 120px;
+}
+.timerWrap:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-strong);
+  border-radius: 10px;
 }
 
 .timerText {

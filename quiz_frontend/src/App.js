@@ -575,7 +575,10 @@ function App() {
     return (
       <>
         <header className="cardHeader">
-          <span className="badge">Quick Quiz</span>
+          <span className="badge" aria-label="Quiz type badge">
+            <span className="badgeDot" aria-hidden="true" />
+            Quick Quiz
+          </span>
           <h1 className="resultTitle">Start a new run</h1>
           <p className="resultSubtitle">Pick your settings before you begin.</p>
         </header>
@@ -634,38 +637,48 @@ function App() {
 
             <label className="toggleRow">
               <span className="toggleText">
-                Shuffle <span className="togglePill">default ON</span>
+                <span className="toggleLabel">Shuffle <span className="togglePill">default ON</span></span>
               </span>
-              <input
-                className="toggle"
-                type="checkbox"
-                checked={settings.shuffleEnabled}
-                onChange={(e) =>
-                  setSettings((prev) => ({
-                    ...prev,
-                    shuffleEnabled: e.target.checked,
-                  }))
-                }
-                aria-label="Shuffle"
-              />
+              <div>
+                <input
+                  className="toggle"
+                  type="checkbox"
+                  role="switch"
+                  aria-checked={settings.shuffleEnabled}
+                  checked={settings.shuffleEnabled}
+                  onChange={(e) =>
+                    setSettings((prev) => ({
+                      ...prev,
+                      shuffleEnabled: e.target.checked,
+                    }))
+                  }
+                  aria-label="Shuffle"
+                />
+                <span className="toggleStateChip" aria-hidden="true">{settings.shuffleEnabled ? 'On' : 'Off'}</span>
+              </div>
             </label>
 
             <label className="toggleRow">
               <span className="toggleText">
-                Adaptive Mode <span className="togglePill">default OFF</span>
+                <span className="toggleLabel">Adaptive Mode <span className="togglePill">default OFF</span></span>
               </span>
-              <input
-                className="toggle"
-                type="checkbox"
-                checked={settings.adaptiveEnabled}
-                onChange={(e) =>
-                  setSettings((prev) => ({
-                    ...prev,
-                    adaptiveEnabled: e.target.checked,
-                  }))
-                }
-                aria-label="Adaptive Mode"
-              />
+              <div>
+                <input
+                  className="toggle"
+                  type="checkbox"
+                  role="switch"
+                  aria-checked={settings.adaptiveEnabled}
+                  checked={settings.adaptiveEnabled}
+                  onChange={(e) =>
+                    setSettings((prev) => ({
+                      ...prev,
+                      adaptiveEnabled: e.target.checked,
+                    }))
+                  }
+                  aria-label="Adaptive Mode"
+                />
+                <span className="toggleStateChip" aria-hidden="true">{settings.adaptiveEnabled ? 'On' : 'Off'}</span>
+              </div>
             </label>
 
             <span className="fieldHint">
@@ -680,7 +693,7 @@ function App() {
             <span className="hintWait">Settings apply to this run only.</span>
           </div>
           <div className="actions">
-            <button type="button" className="primaryBtn" onClick={startQuiz}>
+            <button type="button" className="primaryBtn" onClick={startQuiz} aria-label="Start quiz">
               Start Quiz
             </button>
           </div>
@@ -709,7 +722,7 @@ function App() {
               <div className="progressFill" style={{ width: `${progressPercent}%` }} />
             </div>
 
-            <div className="ribbonRow" aria-label="Run stats">
+            <div className="ribbonRow" aria-label="Run stats" role="status" aria-live="polite">
               <span className="ribbonItem">
                 Streak: <strong>{currentStreak}</strong> (best <strong>{bestStreak}</strong>)
               </span>
@@ -724,7 +737,8 @@ function App() {
             {earnedBadgesForRibbon.length ? (
               <div className="badgeRibbon" aria-label="Earned badges">
                 {earnedBadgesForRibbon.map((b) => (
-                  <span key={b.id} className="miniBadge">
+                  <span key={b.id} className="miniBadge" role="img" aria-label={`Badge earned: ${b.label}`}>
+                    <span className="dot" aria-hidden="true" />
                     {b.label}
                   </span>
                 ))}
@@ -737,7 +751,14 @@ function App() {
               {currentQuestion.question}
             </h1>
 
-            <div className="timerWrap" aria-label="Time remaining">
+            <div
+              className="timerWrap"
+              tabIndex={0}
+              aria-label="Time remaining"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
               <div className="timerRing" aria-hidden="true">
                 <svg viewBox="0 0 44 44" className="ringSvg">
                   <circle className="ringTrack" cx="22" cy="22" r="18" />
@@ -791,7 +812,13 @@ function App() {
           </div>
 
           <div className="actions">
-            <button type="button" className="primaryBtn" onClick={() => goNext()} disabled={!hasSelectedForCurrent}>
+            <button
+              type="button"
+              className="primaryBtn"
+              onClick={() => goNext()}
+              disabled={!hasSelectedForCurrent}
+              aria-label={isLastQuestion ? 'Finish quiz' : 'Go to next question'}
+            >
               {isLastQuestion ? 'Finish' : 'Next'}
             </button>
           </div>
@@ -840,13 +867,18 @@ function App() {
           {earnedBadgeIds.length ? (
             <div className="badgeGrid" aria-label="Badges earned list">
               {BADGES.filter((b) => earnedBadgeIds.includes(b.id)).map((b) => (
-                <span key={b.id} className="miniBadge">
+                <span key={b.id} className="miniBadge" role="img" aria-label={`Badge earned: ${b.label}`}>
+                  <span className="dot" aria-hidden="true" />
                   {b.label}
                 </span>
               ))}
             </div>
           ) : (
             <div className="badgeGrid" aria-label="Badges earned list">
+              <span className="miniBadge neutral" aria-label="No badges earned">
+                <span className="dot" aria-hidden="true" />
+                None yet
+              </span>
               <span className="emptyBadges">No badges this run — try a longer streak!</span>
             </div>
           )}
@@ -868,7 +900,7 @@ function App() {
 
         <footer className="cardFooter">
           <div className="actions">
-            <button type="button" className="secondaryBtn" onClick={restart}>
+            <button type="button" className="secondaryBtn" onClick={restart} aria-label="Restart quiz">
               Restart Quiz
             </button>
           </div>
